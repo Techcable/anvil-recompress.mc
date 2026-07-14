@@ -1,0 +1,23 @@
+[package]
+name = "anvil-recompress"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Recompress a minecraft anvil file"
+authors = ["Techcable"]
+repository = "https://github.com/Techcable/anvil-recompress.mc"
+# 1.85 - Rust 2024
+# 1.88 - let chains
+# 1.91 - Path::with_added_extension
+rust-version = "1.91"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4.6", features = ["derive"] }
+fastanvil = "0.32"
+walkdir = "2"
+same-file = "1"
+
+# compression
+flate2 = "1"
+lz4 = "1"
