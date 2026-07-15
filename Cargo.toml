@@ -23,15 +23,20 @@ walkdir = { version = "2", optional = true }
 
 # compression
 flate2 = "1"
-lz4 = "1"
+lz4 = { version = "1", optional = true }
 
 [features]
-default = ["cli"]
+default = ["cli", "compress-all"]
 # Implement clap traits for some types
 # This can be enabled without the full 'cli' feature.
 clap = ["dep:clap"]
 # Dependencies used by the CLI
 cli = ["clap", "dep:walkdir"]
+
+# Enable all the optional compression algorithms
+compress-all = ["compress-lz4"]
+# Enable lz4 compression
+compress-lz4 = ["dep:lz4"]
 
 [profile.release]
 lto = "thin"

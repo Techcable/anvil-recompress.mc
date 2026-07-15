@@ -42,6 +42,13 @@ impl RecompressFileOptions {
         self.compression_level
             .validate(self.compression_algorithm)
             .map_err(|reason| OptionsValidateError { reason })?;
+        if !self.compression_algorithm.is_supported() {
+            return Err(OptionsValidateError {
+                reason: OptionsValidateErrorReason::UnsupportedAlgorithm {
+                    algorithm: self.compression_algorithm,
+                },
+            });
+        }
         Ok(())
     }
     pub(crate) fn zlib_level(&self) -> flate2::Compression {
@@ -54,6 +61,7 @@ impl RecompressFileOptions {
             level @ CompressionLevel::ExtraFast(_) => unreachable!("{level:?} should have failed validation"),
         }
     }
+    #[cfg(feature = "compress-lz4")]
     pub(crate) fn lz4_level(&self) -> lz4::block::CompressionMode {
         #[track_caller]
         fn cast_i32(x: u32) -> i32 {
@@ -81,7 +89,14 @@ impl RecompressFileOptions {
             }
             CompressionAlgorithm::None => return Ok(Cow::Borrowed(input)),
             CompressionAlgorithm::Lz4 => {
-                lz4::block::compress_to_buffer(input, Some(self.lz4_level()), false, &mut buffer)?;
+                #[cfg(feature = "compress-lz4")]
+                {
+                    lz4::block::compress_to_buffer(input, Some(self.lz4_level()), false, &mut buffer)?;
+                }
+                #[cfg(not(feature = "compress-lz4"))]
+                {
+                    unreachable!("use of disabled algorithm should be prevented by validation")
+                }
             }
         }
         Ok(Cow::Owned(buffer))
@@ -119,5 +134,14 @@ pub enum OptionsValidateErrorReason {
         level: CompressionLevel,
         /// The type of integer that the level overflowed.
         target_type: &'static str,
+    },
+    /// Indicates that support for a [`CompressionAlgorithm`] is disabled.
+    ///
+    /// This is controlled by the `compress-*` feature flags.
+    #[error("Compression algorithm {algorithm} is disabled")]
+    #[non_exhaustive]
+    UnsupportedAlgorithm {
+        /// The algorithm which is unsupported.
+        algorithm: CompressionAlgorithm,
     },
 }

@@ -3,7 +3,7 @@
 #![allow(
     clippy::must_use_candidate,
     clippy::trivially_copy_pass_by_ref,
-    reason = "excessively pedantic",
+    reason = "excessively pedantic"
 )]
 
 use std::fmt::{self, Debug, Display, Formatter};

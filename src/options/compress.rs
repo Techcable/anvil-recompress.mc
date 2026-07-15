@@ -31,6 +31,13 @@ impl CompressionAlgorithm {
             CompressionAlgorithm::Lz4 => "lz4",
         }
     }
+    /// Return whether this compression algorithm is supported.
+    pub fn is_supported(&self) -> bool {
+        match self {
+            CompressionAlgorithm::Zlib | CompressionAlgorithm::Gzip | CompressionAlgorithm::None => true, // these are always supported
+            CompressionAlgorithm::Lz4 => cfg!(feature = "compress-all"),
+        }
+    }
     pub(crate) fn fastanvil_scheme(self) -> fastanvil::CompressionScheme {
         use fastanvil::CompressionScheme;
         match self {

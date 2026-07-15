@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - The CLI functionality requires the on-by-default "cli" feature.
 
 ### Changed
+- Make support for lz4 compression optional (on by default).
 - Set LTO for release builds by default
 
 ## 0.1.0 - 2026-07-14
