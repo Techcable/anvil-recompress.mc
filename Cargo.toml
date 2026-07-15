@@ -21,3 +21,6 @@ same-file = "1"
 # compression
 flate2 = "1"
 lz4 = "1"
+
+[profile.release]
+lto = "thin"
