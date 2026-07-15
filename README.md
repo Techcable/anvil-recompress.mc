@@ -3,6 +3,9 @@ A command line tool to recompress Minecraft region files (using the anvil format
 
 Uses [fastanvil](https://docs.rs/fastanvil/latest/fastanvil/) to read & write files.
 
+Functionality is available as a library as well.
+Set `default-features = false` to avoid bringing in any extra dependencies.
+
 ## License
 Licensed under the [Apache 2.0 License](./LICENSE.txt).
 

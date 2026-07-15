@@ -1,31 +1,11 @@
 #![warn(clippy::pedantic)]
-#![allow(clippy::unnecessary_debug_formatting)]
-use std::borrow::Cow;
-use std::io::Write;
+#![allow(clippy::unnecessary_debug_formatting, clippy::missing_errors_doc)]
 use std::path::{Path, PathBuf};
 
+use anvil_recompress::{CompressionAlgorithm, CompressionLevel, RecompressFileOptions};
 use anyhow::Context;
 use clap::Parser;
 use walkdir::WalkDir;
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, clap::ValueEnum)]
-enum CompressionChoice {
-    Zlib,
-    Gzip,
-    None,
-    Lz4,
-}
-impl CompressionChoice {
-    fn fastanvil_scheme(self) -> fastanvil::CompressionScheme {
-        use fastanvil::CompressionScheme;
-        match self {
-            CompressionChoice::Zlib => CompressionScheme::Zlib,
-            CompressionChoice::Gzip => CompressionScheme::Gzip,
-            CompressionChoice::None => CompressionScheme::Uncompressed,
-            CompressionChoice::Lz4 => CompressionScheme::Lz4,
-        }
-    }
-}
 
 /// Recompress minecraft region files.
 #[derive(Parser, Debug)]
@@ -35,7 +15,7 @@ struct Cli {
     #[arg(short = 'r', long)]
     recurse: bool,
     #[arg(long, required = true)]
-    compression: CompressionChoice,
+    compression: CompressionAlgorithm,
     #[arg(long = "level")]
     compression_level: Option<u32>,
     /// The file or directory to recompress.
@@ -53,31 +33,14 @@ struct Cli {
     quiet: bool,
 }
 impl Cli {
-    fn compress<'a>(&self, input: &'a [u8]) -> anyhow::Result<Cow<'a, [u8]>> {
-        let mut buffer = Vec::new();
-        match self.compression {
-            CompressionChoice::Zlib => {
-                let level = self.compression_level.map(flate2::Compression::new).unwrap_or_default();
-                let mut encoder = flate2::write::ZlibEncoder::new(&mut buffer, level);
-                encoder.write_all(input).context("zlib compression error")?;
-            }
-            CompressionChoice::Gzip => {
-                let level = self.compression_level.map(flate2::Compression::new).unwrap_or_default();
-                let mut encoder = flate2::write::GzEncoder::new(&mut buffer, level);
-                encoder.write_all(input).context("gzip compression error")?;
-            }
-            CompressionChoice::None => return Ok(Cow::Borrowed(input)),
-            CompressionChoice::Lz4 => {
-                let level = self
-                    .compression_level
-                    .map(|x| i32::try_from(x).expect("level overflow"))
-                    .map(lz4::block::CompressionMode::HIGHCOMPRESSION)
-                    .unwrap_or_default();
-                lz4::block::compress_to_buffer(input, Some(level), false, &mut buffer)
-                    .context("lz4 compression error")?;
-            }
-        }
-        Ok(Cow::Owned(buffer))
+    fn recompression_opts(&self) -> RecompressFileOptions {
+        let mut opts = RecompressFileOptions::new(self.compression);
+        opts.compression_level = self
+            .compression_level
+            .map(CompressionLevel::Standard)
+            .unwrap_or_default();
+        opts.override_existing = self.output.inplace && self.override_backups;
+        opts
     }
 }
 
@@ -124,47 +87,14 @@ fn process_entry(root: &Path, relative_target: &Path, cli: &Cli) -> anyhow::Resu
         );
         (root.join(relative_target), dest.join(relative_target))
     };
-    anyhow::ensure!(
-        !same_file::is_same_file(&input_file, &output_file).unwrap_or(false),
-        "Internal Error: Cannot process file {input_file:?} as output {output_file:?} is actually the same file"
-    );
-    let mut input_region = std::fs::File::open(&input_file)
-        .map_err(anyhow::Error::new)
-        .and_then(|file| Ok(fastanvil::Region::from_stream(file)?))
-        .with_context(|| format!("Failed to open region file {input_file:?}"))?;
     if !cli.output.inplace
         && let Some(parent) = output_file.parent()
     {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create parent {parent:?} for {output_file:?}"))?;
     }
-    // Using File::create is write-only.
-    // This doesn't work due to the need to seek
-    let mut output_region = std::fs::File::options()
-        .create(true)
-        .write(true)
-        .read(true)
-        .truncate(true)
-        .open(&output_file)
-        .map_err(anyhow::Error::new)
-        .and_then(|file| Ok(fastanvil::Region::create(file)?))
-        .with_context(|| format!("Failed to create region file {output_file:?}"))?;
-    // We are careful to use deterministic iter order here,
-    // although this currently matches what fastanvil does by default
-    for z in 0..32 {
-        for x in 0..32 {
-            let chunk = input_region
-                .read_chunk(x, z)
-                .with_context(|| format!("Failed to read chunk ({x}, {z}) from {input_file:?}"))?;
-            let Some(chunk) = chunk else { continue };
-            let compressed_data = cli
-                .compress(&chunk)
-                .with_context(|| format!("Compression failure for chunk ({x}, {z})"))?;
-            output_region
-                .write_compressed_chunk(x, z, cli.compression.fastanvil_scheme(), &compressed_data)
-                .with_context(|| format!("Failed to write chunk ({x}, {z}) to {output_file:?}"))?;
-        }
-    }
+    // no context needs to be added as the error already includes that
+    anvil_recompress::recompress_region_file(&input_file, &output_file, &cli.recompression_opts())?;
     if !cli.quiet {
         // finished
         println!("{}", relative_target.display());
@@ -214,7 +144,7 @@ fn process_entries_standard(cli: &Cli) -> anyhow::Result<()> {
 
 pub fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    if cli.compression != CompressionChoice::Lz4 {
+    if cli.compression != CompressionAlgorithm::Lz4 {
         eprintln!("WARN: Compression choice 'lz4' has not been tested.");
     }
     if cli.recurse {
