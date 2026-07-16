@@ -6,7 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- *EXPERIMENTAL*: Add incremental processing/caching functionality.
+  Avoids recompressing files when inputs haven't changed.
+  Uses a combination of ctime and blake3 hashing to detect changes.
 - Add `--override-existing-dest` option to CLI, allowing override without needing `--inplace`.
+- *EXPERIMENTAL*: Allow passing already opened file handles to `recompress_region_file`.
+  This API is not intended for public use yet, as it has some footguns.
 
 ### Changed
 - Split library crate `anvil-recompress-engine` from the CLI crate `anvil-recompress`.

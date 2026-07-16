@@ -8,6 +8,7 @@ authors = ["Techcable"]
 edition = "2024"
 # 1.85 - Rust 2024
 # 1.88 - let chains
+# 1.89 - File::lock
 # 1.91 - Path::with_added_extension
 rust-version = "1.91"
 repository = "https://github.com/Techcable/anvil-recompress.mc"
@@ -23,6 +24,7 @@ slog = {
 
 # workspace deps
 anvil-recompress-engine = { path = "crates/engine", version = "0.1" }
+anvil-recompress-incremental = { path = "crates/incremental", version = "0.1" }
 
 # optimize dependencies
 # particularly important for blake3 and compression algorithms

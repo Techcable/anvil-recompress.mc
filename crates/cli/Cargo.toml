@@ -10,8 +10,11 @@ license.workspace = true
 
 [dependencies]
 anvil-recompress-engine = { workspace = true, features = ["clap"] }
+anvil-recompress-incremental.workspace = true
 anyhow = "1"
+camino = "1"
 clap = { workspace = true, features = ["derive", "string"] }
+relative-path = "2"
 slog = "2.8"
 slog-term = { version = "2.9", features = ["nested-values"] }
 walkdir = "2"

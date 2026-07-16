@@ -1,0 +1,24 @@
+[package]
+name = "anvil-recompress-incremental"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Incremental processing for anvil-recompress"
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+anvil-recompress-engine.workspace = true
+blake3 = { version = "1", features = ["serde"] }
+camino = "1"
+indoc = "2"
+relative-path = "2"
+rusqlite = { version = "0.40", features = ["i128_blob", "serde_json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+slog.workspace = true
+thiserror = "2"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+
+[features]

@@ -9,9 +9,9 @@
 use std::fmt::{self, Debug, Display, Formatter};
 use std::io::{Read, Seek, Write};
 use std::ops::Range;
-use std::path::Path;
 
-use crate::errors::{FileRecompressErrorKind, OpenOutputError};
+use crate::errors::FileRecompressErrorKind;
+use crate::spec::FileSpec;
 
 pub mod errors;
 pub mod options;
@@ -19,49 +19,46 @@ pub mod options;
 pub use self::errors::FileRecompressError;
 pub use self::options::{CompressionAlgorithm, CompressionLevel, RecompressFileOptions};
 
+pub mod spec;
+
 /// Recompress a region file.
 ///
 /// # Errors
 /// All error messages include the input and output file.
 ///
 /// The input and output file must be distinct,
-/// or an error will occur.
+/// or an error may occur.
 ///
 /// Unless [`RecompressFileOptions::override_existing`] is specified,
 /// an existing output file will trigger an error.
 pub fn recompress_region_file(
-    input_file: &Path,
-    output_file: &Path,
+    input_file: impl FileSpec,
+    output_file: impl FileSpec,
     opts: &RecompressFileOptions,
 ) -> Result<(), FileRecompressError> {
+    let input_path = input_file.path().to_owned();
+    let output_path = output_file.path().to_owned();
     let create_error = |kind| FileRecompressError {
         kind,
-        input_file: input_file.into(),
-        output_file: output_file.into(),
+        input_file: input_path.clone(),
+        output_file: output_path.clone(),
     };
     opts.validate()
         .map_err(FileRecompressErrorKind::InvalidOptions)
         .map_err(&create_error)?;
-    if same_file::is_same_file(input_file, output_file).unwrap_or(false) {
+    if same_file::is_same_file(input_file.path(), output_file.path()).unwrap_or(false) {
         return Err(create_error(FileRecompressErrorKind::SameFile));
     }
-    let mut input_region = std::fs::File::open(input_file)
-        .map_err(|cause| FileRecompressErrorKind::OpenInputFile { cause })
+    let mut input_region = input_file
+        .open_input_file(opts)
+        .map_err(|cause| cause.0)
         .and_then(|file| {
             fastanvil::Region::from_stream(file).map_err(|cause| FileRecompressErrorKind::ReadInput { cause })
         })
         .map_err(&create_error)?;
-    let create_new = !opts.override_existing;
-    // Using File::create does not work as fastanvil needs to be able to seek
-    // and File::create is write-only.
-    let mut output_region = std::fs::File::options()
-        .create(true)
-        .write(true)
-        .read(true)
-        .truncate(!create_new)
-        .create_new(create_new)
-        .open(output_file)
-        .map_err(|cause| FileRecompressErrorKind::OpenOutput(OpenOutputError { create_new, cause }))
+    let mut output_region = output_file
+        .open_output_file(opts)
+        .map_err(|cause| cause.0)
         .and_then(|file| {
             fastanvil::Region::create(file).map_err(|cause| FileRecompressErrorKind::WriteOutput { cause })
         })

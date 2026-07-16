@@ -5,8 +5,9 @@ use std::fmt::{Display, Formatter};
 use crate::options::OptionsValidateErrorReason;
 
 /// A supported compression algorithm for minecraft region files.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Default, serde::Serialize)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum CompressionAlgorithm {
     /// Use [zlib](https://en.wikipedia.org/wiki/Zlib) compression.
@@ -88,6 +89,10 @@ pub enum CompressionLevel {
     ExtraFast(u32),
 }
 impl CompressionLevel {
+    /// True if this is [`CompressionLevel::Default`].
+    pub fn is_default(&self) -> bool {
+        matches!(self, CompressionLevel::Default)
+    }
     pub(crate) fn is_applicable_for(&self, algorithm: CompressionAlgorithm) -> bool {
         match (self, algorithm) {
             // a "default" level is always valid
@@ -132,5 +137,16 @@ impl Display for CompressionLevel {
             CompressionLevel::Best => f.write_str("--best"),
             CompressionLevel::Fast => f.write_str("--fast"),
         }
+    }
+}
+/// Serialize a [`CompressionLevel`] using its [`Display`] impl.
+///
+/// This may change in the future.
+impl serde::Serialize for CompressionLevel {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        <String as serde::Serialize>::serialize(&self.to_string(), serializer)
     }
 }

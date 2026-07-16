@@ -16,8 +16,14 @@ pub use self::compress::{CompressionAlgorithm, CompressionLevel};
 /// If an invalid config is attempted to be used, a [`OptionsValidateError`] could be returned.
 ///
 /// This is possible if compression options are not appropriate for a specific algorithm.
-#[derive(Clone, Debug)]
+///
+/// # Serialization
+/// This can be serialized via [`serde::Serialize`] to produce a fingerprint
+/// of the options which affect the produced output.
+/// This is used for cache invalidation.
+#[derive(Clone, Debug, serde::Serialize)]
 #[non_exhaustive]
+#[serde(rename_all = "kebab-case")]
 pub struct RecompressFileOptions {
     /// The algorithm to use.
     pub compression_algorithm: CompressionAlgorithm,
@@ -25,7 +31,9 @@ pub struct RecompressFileOptions {
     ///
     /// If this is not valid for a certain algorithm,
     /// an error will be returned when it is used.
+    #[serde(skip_serializing_if = "CompressionLevel::is_default")]
     pub compression_level: CompressionLevel,
+    #[serde(skip_serializing)]
     /// If true, this will override existing output files.
     pub override_existing: bool,
 }

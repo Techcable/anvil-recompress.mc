@@ -4,9 +4,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use anvil_recompress_engine::{CompressionAlgorithm, CompressionLevel, RecompressFileOptions};
-use anyhow::Context;
+use anvil_recompress_incremental::cache::{CacheGcOpts, IncrementalCache};
+use anyhow::{Context, anyhow, ensure};
+use camino::Utf8PathBuf;
 use clap::Parser;
 use clap::builder::PossibleValue;
+use relative_path::RelativePath;
 use slog::{Drain, FilterLevel, Logger, warn};
 use slog_term::{CompactFormat, TermDecorator};
 use walkdir::WalkDir;
@@ -39,8 +42,16 @@ struct Cli {
     /// Suppress the normal printing of progress.
     #[arg(long, short)]
     quiet: bool,
+    /// Enable the experimental incremental mode.
+    #[arg(long)]
+    incremental: bool,
     #[arg(long, default_value = "info")]
     log_level: LevelSpec,
+    /// When using incremental compression, run GC afterwards.
+    ///
+    /// Has no effect unless `--incremental` is specified.
+    #[arg(long)]
+    gc: bool,
 }
 impl Cli {
     fn recompression_opts(&self) -> RecompressFileOptions {
@@ -102,14 +113,15 @@ const REGION_FILE_EXTENSION: &str = ".mca";
 
 struct ProcessContext<'a> {
     logger: Logger,
-    root: PathBuf,
+    root: Utf8PathBuf,
+    incremental_cache: Option<Box<IncrementalCache>>,
     cli: &'a Cli,
 }
 
-fn process_entry(ctx: &ProcessContext, relative_target: &Path) -> anyhow::Result<()> {
+fn process_entry(ctx: &ProcessContext, raw_target: &Path) -> anyhow::Result<()> {
     let cli = ctx.cli;
-    let (input_file, output_file) = if cli.output.inplace {
-        let target = ctx.root.as_path().join(relative_target);
+    let (input_file, output_file, relative_target) = if cli.output.inplace {
+        let target = ctx.root.as_std_path().join(raw_target);
         let backup_file = target.with_added_extension(".bak");
         assert_ne!(backup_file, target);
         // making fs::rename  atomic and catching the FileExists error is actually very difficult,
@@ -127,14 +139,17 @@ fn process_entry(ctx: &ProcessContext, relative_target: &Path) -> anyhow::Result
             }
         }
         std::fs::rename(&target, &backup_file).context("Failed to create backup")?;
-        (backup_file, target)
+        (backup_file, target, None)
     } else {
-        let dest = cli.output.dest.clone().expect("neither --inplace nor --dest");
-        anyhow::ensure!(
-            relative_target.is_relative(),
-            "A relative path is required (got {relative_target:?})"
-        );
-        (ctx.root.join(relative_target), dest.join(relative_target))
+        let relative_target = RelativePath::from_path(raw_target)
+            .with_context(|| format!("When using --dest, a relative path is required (got {raw_target:?})"))?;
+        let dest = Utf8PathBuf::try_from(cli.output.dest.clone().expect("neither --inplace nor --dest"))
+            .context("Destination must be a UTF8 path")?;
+        (
+            relative_target.to_path(&ctx.root),
+            relative_target.to_path(&dest),
+            Some(relative_target),
+        )
     };
     if !cli.output.inplace
         && let Some(parent) = output_file.parent()
@@ -142,11 +157,24 @@ fn process_entry(ctx: &ProcessContext, relative_target: &Path) -> anyhow::Result
         std::fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create parent {parent:?} for {output_file:?}"))?;
     }
-    // no context needs to be added as the error already includes that
-    anvil_recompress_engine::recompress_region_file(&input_file, &output_file, &cli.recompression_opts())?;
+    if let Some(ref incremental) = ctx.incremental_cache {
+        ensure!(
+            !cli.output.inplace,
+            "Inplace processing is not valid for --incremental mode"
+        );
+        let relative_target = relative_target.expect("Already checked for --inplace");
+        incremental
+            .lock_out_file(relative_target)
+            .with_context(|| format!("Failed to lock output file {output_file:?}"))?
+            .recompress_region_file(&input_file, &cli.recompression_opts())
+            .with_context(|| format!("Incremental recompression of {input_file:?} failed"))?;
+    } else {
+        // no context needs to be added as the error already includes that
+        anvil_recompress_engine::recompress_region_file(&input_file, &output_file, &cli.recompression_opts())?;
+    }
     if !cli.quiet {
         // finished
-        println!("{}", relative_target.display());
+        println!("{}", raw_target.display());
     }
     Ok(())
 }
@@ -167,9 +195,22 @@ fn init_logger(cli: &Cli) -> Logger {
 fn process_entries_recursive(logger: &Logger, root: &Path, cli: &Cli) -> anyhow::Result<()> {
     let ctx = ProcessContext {
         logger: logger.clone(),
-        root: root.to_owned(),
+        incremental_cache: if cli.incremental {
+            let dest = cli
+                .output
+                .dest
+                .clone()
+                .ok_or_else(|| anyhow!("Must use --dest with --incremental"))?;
+            Some(Box::new(
+                IncrementalCache::open(logger, &dest).context("Failed to initialize incremental cache")?,
+            ))
+        } else {
+            None
+        },
+        root: Utf8PathBuf::try_from(root.to_owned()).context("Root is not a UTF8 path")?,
         cli,
     };
+    let mut entries_to_keep = Vec::new();
     // NOTE: This implicitly handles the non-recursive case by simply yielding the root
     let walk = WalkDir::new(root).sort_by_file_name();
     for entry in walk {
@@ -188,6 +229,16 @@ fn process_entries_recursive(logger: &Logger, root: &Path, cli: &Cli) -> anyhow:
             .with_context(|| format!("Failed to strip prefix of {entry:?} while searching {root:?}"))?;
         process_entry(&ctx, relative_path)
             .with_context(|| format!("Failed to process {relative_path:?} while searching {root:?}"))?;
+        entries_to_keep.push(relative_path.to_path_buf());
+    }
+    if let Some(ref incremental) = ctx.incremental_cache
+        && cli.gc
+    {
+        let mut opts = CacheGcOpts::default();
+        opts.remove_all_outputs_except = Some(entries_to_keep);
+        incremental
+            .garbage_collect(&opts)
+            .context("Failed to run garbage collection")?;
     }
     Ok(())
 }
@@ -203,10 +254,15 @@ fn process_entries_standard(logger: &Logger, cli: &Cli) -> anyhow::Result<()> {
         }
         anyhow::ensure!(entry.is_file(), "Target must be an existing file: {entry:?}");
     }
+    ensure!(
+        !cli.incremental,
+        "Incremental processing can not be used without --recursive"
+    );
     let ctx = ProcessContext {
         logger: logger.clone(),
+        incremental_cache: None,
         cli,
-        root: PathBuf::new(),
+        root: Utf8PathBuf::new(),
     };
     for entry in &cli.targets {
         process_entry(&ctx, entry).with_context(|| format!("Failed to process {entry:?}"))?;
@@ -219,6 +275,9 @@ pub fn main() -> anyhow::Result<()> {
     let logger = init_logger(&cli);
     if cli.compression == CompressionAlgorithm::Lz4 {
         warn!(logger, "Compression choice 'lz4' has not been tested.");
+    }
+    if cli.incremental {
+        warn!(logger, "The --incremental option is highly experimental. Make backups!");
     }
     if cli.recurse {
         anyhow::ensure!(
