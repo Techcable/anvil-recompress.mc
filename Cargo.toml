@@ -1,9 +1,11 @@
-[package]
-name = "anvil-recompress"
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
 version = "0.1.1"
 edition = "2024"
 license = "Apache-2.0"
-description = "Recompress a minecraft anvil file"
 authors = ["Techcable"]
 repository = "https://github.com/Techcable/anvil-recompress.mc"
 # 1.85 - Rust 2024
@@ -11,37 +13,12 @@ repository = "https://github.com/Techcable/anvil-recompress.mc"
 # 1.91 - Path::with_added_extension
 rust-version = "1.91"
 
-[dependencies]
-anyhow = "1"
-thiserror = "2"
+[workspace.dependencies]
 fastanvil = "0.32"
-same-file = "1"
+clap = "4.6"
 
-# CLi dependencies
-clap = { version = "4.6", optional = true, features = ["derive"] }
-walkdir = { version = "2", optional = true }
-
-# compression
-flate2 = "1"
-lz4 = { version = "1", optional = true }
-
-[features]
-default = ["cli", "compress-all"]
-# Implement clap traits for some types
-# This can be enabled without the full 'cli' feature.
-clap = ["dep:clap"]
-# Dependencies used by the CLI
-cli = ["clap", "dep:walkdir"]
-
-# Enable all the optional compression algorithms
-compress-all = ["compress-lz4"]
-# Enable lz4 compression
-compress-lz4 = ["dep:lz4"]
+# workspace deps
+anvil-recompress-engine = { version = "0.1", path = "crates/engine" }
 
 [profile.release]
 lto = "thin"
-
-[[bin]]
-name = "anvil-recompress"
-path = "src/main.rs"
-required-features = ["cli"]

@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Split library crate `anvil-recompress-engine` from the CLI crate `anvil-recompress`.
+  - Library crate is re-exported from the CLI crate, so backwards compatibility is preserved.
+
 ## 0.1.1 - 2026-07-15
 
 ### Added

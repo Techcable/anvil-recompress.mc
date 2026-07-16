@@ -1,0 +1,30 @@
+[package]
+name = "anvil-recompress-engine"
+description = "Library for recompressing minecraft anvil files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow = "1"
+same-file = "1"
+thiserror = "2"
+fastanvil.workspace = true
+clap = { workspace = true, features = ["derive"], optional = true }
+
+# compression
+flate2 = "1"
+lz4 = { version = "1",  optional = true }
+
+[features]
+default = []
+# Implement clap traits for some types
+clap = ["dep:clap"]
+
+# Enable all the optional compression algorithms
+compress-all = ["compress-lz4"]
+# Enable lz4 compression
+compress-lz4 = ["dep:lz4"]

@@ -62,6 +62,16 @@ dependencies = [
 name = "anvil-recompress"
 version = "0.1.1"
 dependencies = [
+ "anvil-recompress-engine",
+ "anyhow",
+ "clap",
+ "walkdir",
+]
+
+[[package]]
+name = "anvil-recompress-engine"
+version = "0.1.1"
+dependencies = [
  "anyhow",
  "clap",
  "fastanvil",
@@ -69,7 +79,6 @@ dependencies = [
  "lz4",
  "same-file",
  "thiserror",
- "walkdir",
 ]
 
 [[package]]

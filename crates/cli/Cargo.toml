@@ -1,0 +1,15 @@
+[package]
+name = "anvil-recompress"
+description = "Recompress minecraft anvil files (CLI)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow = "1"
+walkdir = "2"
+clap = { workspace = true, features = ["derive"] }
+anvil-recompress-engine = { workspace = true, features = ["clap"] }

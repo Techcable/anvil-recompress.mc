@@ -2,7 +2,7 @@
 #![allow(clippy::unnecessary_debug_formatting, clippy::missing_errors_doc)]
 use std::path::{Path, PathBuf};
 
-use anvil_recompress::{CompressionAlgorithm, CompressionLevel, RecompressFileOptions};
+use anvil_recompress_engine::{CompressionAlgorithm, CompressionLevel, RecompressFileOptions};
 use anyhow::Context;
 use clap::Parser;
 use walkdir::WalkDir;
@@ -94,7 +94,7 @@ fn process_entry(root: &Path, relative_target: &Path, cli: &Cli) -> anyhow::Resu
             .with_context(|| format!("Failed to create parent {parent:?} for {output_file:?}"))?;
     }
     // no context needs to be added as the error already includes that
-    anvil_recompress::recompress_region_file(&input_file, &output_file, &cli.recompression_opts())?;
+    anvil_recompress_engine::recompress_region_file(&input_file, &output_file, &cli.recompression_opts())?;
     if !cli.quiet {
         // finished
         println!("{}", relative_target.display());
