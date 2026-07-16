@@ -1,10 +1,14 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::unnecessary_debug_formatting, clippy::missing_errors_doc)]
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use anvil_recompress_engine::{CompressionAlgorithm, CompressionLevel, RecompressFileOptions};
 use anyhow::Context;
 use clap::Parser;
+use clap::builder::PossibleValue;
+use slog::{Drain, FilterLevel, Logger, warn};
+use slog_term::{CompactFormat, TermDecorator};
 use walkdir::WalkDir;
 
 /// Recompress minecraft region files.
@@ -35,6 +39,8 @@ struct Cli {
     /// Suppress the normal printing of progress.
     #[arg(long, short)]
     quiet: bool,
+    #[arg(long, default_value = "info")]
+    log_level: LevelSpec,
 }
 impl Cli {
     fn recompression_opts(&self) -> RecompressFileOptions {
@@ -46,6 +52,33 @@ impl Cli {
         opts.override_existing = (self.output.inplace && self.override_backups)
             || (self.output.dest.is_some() && self.override_existing_dest);
         opts
+    }
+}
+#[derive(Copy, Clone, Debug)]
+struct LevelSpec(FilterLevel);
+impl Default for LevelSpec {
+    fn default() -> Self {
+        LevelSpec(FilterLevel::Info)
+    }
+}
+impl LevelSpec {
+    const ALL: &[LevelSpec] = &[
+        LevelSpec(FilterLevel::Off),
+        LevelSpec(FilterLevel::Critical),
+        LevelSpec(FilterLevel::Error),
+        LevelSpec(FilterLevel::Warning),
+        LevelSpec(FilterLevel::Info),
+        LevelSpec(FilterLevel::Debug),
+        LevelSpec(FilterLevel::Trace),
+    ];
+}
+impl clap::ValueEnum for LevelSpec {
+    fn value_variants<'a>() -> &'a [Self] {
+        Self::ALL
+    }
+
+    fn to_possible_value(&self) -> Option<PossibleValue> {
+        Some(PossibleValue::new(self.0.as_str().to_lowercase()).alias(self.0.as_short_str().to_lowercase()))
     }
 }
 
@@ -67,9 +100,16 @@ struct OutputSpec {
 
 const REGION_FILE_EXTENSION: &str = ".mca";
 
-fn process_entry(root: &Path, relative_target: &Path, cli: &Cli) -> anyhow::Result<()> {
+struct ProcessContext<'a> {
+    logger: Logger,
+    root: PathBuf,
+    cli: &'a Cli,
+}
+
+fn process_entry(ctx: &ProcessContext, relative_target: &Path) -> anyhow::Result<()> {
+    let cli = ctx.cli;
     let (input_file, output_file) = if cli.output.inplace {
-        let target = root.join(relative_target);
+        let target = ctx.root.as_path().join(relative_target);
         let backup_file = target.with_added_extension(".bak");
         assert_ne!(backup_file, target);
         // making fs::rename  atomic and catching the FileExists error is actually very difficult,
@@ -77,7 +117,11 @@ fn process_entry(root: &Path, relative_target: &Path, cli: &Cli) -> anyhow::Resu
         if backup_file.exists() {
             if cli.override_backups {
                 // warn and continue, as fs::rename will override the old backup
-                eprintln!("WARN: Overriding backup file {backup_file:?}");
+                warn!(
+                    ctx.logger,
+                    "Overriding backup file";
+                    "backup_file" => backup_file.display(),
+                );
             } else {
                 anyhow::bail!("Cannot process {target:?} inplace as a backup file already exists")
             }
@@ -90,7 +134,7 @@ fn process_entry(root: &Path, relative_target: &Path, cli: &Cli) -> anyhow::Resu
             relative_target.is_relative(),
             "A relative path is required (got {relative_target:?})"
         );
-        (root.join(relative_target), dest.join(relative_target))
+        (ctx.root.join(relative_target), dest.join(relative_target))
     };
     if !cli.output.inplace
         && let Some(parent) = output_file.parent()
@@ -107,7 +151,25 @@ fn process_entry(root: &Path, relative_target: &Path, cli: &Cli) -> anyhow::Resu
     Ok(())
 }
 
-fn process_entries_recursive(root: &Path, cli: &Cli) -> anyhow::Result<()> {
+fn init_logger(cli: &Cli) -> Logger {
+    let log_level = cli.log_level;
+    let mut dec = TermDecorator::new();
+    if std::env::var_os("FORCE_COLOR").is_some_and(|x| !x.is_empty()) {
+        dec = dec.force_color();
+    }
+    let drain = CompactFormat::new(dec.build())
+        .build()
+        .filter(move |record| log_level.0.accepts(record.level()))
+        .ignore_res();
+    Logger::root(Mutex::new(drain).fuse(), slog::o!())
+}
+
+fn process_entries_recursive(logger: &Logger, root: &Path, cli: &Cli) -> anyhow::Result<()> {
+    let ctx = ProcessContext {
+        logger: logger.clone(),
+        root: root.to_owned(),
+        cli,
+    };
     // NOTE: This implicitly handles the non-recursive case by simply yielding the root
     let walk = WalkDir::new(root).sort_by_file_name();
     for entry in walk {
@@ -124,13 +186,13 @@ fn process_entries_recursive(root: &Path, cli: &Cli) -> anyhow::Result<()> {
             .path()
             .strip_prefix(root)
             .with_context(|| format!("Failed to strip prefix of {entry:?} while searching {root:?}"))?;
-        process_entry(root, relative_path, cli)
+        process_entry(&ctx, relative_path)
             .with_context(|| format!("Failed to process {relative_path:?} while searching {root:?}"))?;
     }
     Ok(())
 }
 
-fn process_entries_standard(cli: &Cli) -> anyhow::Result<()> {
+fn process_entries_standard(logger: &Logger, cli: &Cli) -> anyhow::Result<()> {
     // do some basic validation of args ahead of time
     for entry in &cli.targets {
         if !cli.output.inplace {
@@ -141,24 +203,30 @@ fn process_entries_standard(cli: &Cli) -> anyhow::Result<()> {
         }
         anyhow::ensure!(entry.is_file(), "Target must be an existing file: {entry:?}");
     }
+    let ctx = ProcessContext {
+        logger: logger.clone(),
+        cli,
+        root: PathBuf::new(),
+    };
     for entry in &cli.targets {
-        process_entry(&PathBuf::new(), entry, cli).with_context(|| format!("Failed to process {entry:?}"))?;
+        process_entry(&ctx, entry).with_context(|| format!("Failed to process {entry:?}"))?;
     }
     Ok(())
 }
 
 pub fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let logger = init_logger(&cli);
     if cli.compression == CompressionAlgorithm::Lz4 {
-        eprintln!("WARN: Compression choice 'lz4' has not been tested.");
+        warn!(logger, "Compression choice 'lz4' has not been tested.");
     }
     if cli.recurse {
         anyhow::ensure!(
             cli.targets.len() == 1,
             "When recursing, cannot have more than one target"
         );
-        process_entries_recursive(&cli.targets[0], &cli)
+        process_entries_recursive(&logger, &cli.targets[0], &cli)
     } else {
-        process_entries_standard(&cli)
+        process_entries_standard(&logger, &cli)
     }
 }

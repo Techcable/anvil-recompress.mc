@@ -11,7 +11,9 @@ license.workspace = true
 [dependencies]
 anvil-recompress-engine = { workspace = true, features = ["clap"] }
 anyhow = "1"
-clap = { workspace = true, features = ["derive"] }
+clap = { workspace = true, features = ["derive", "string"] }
+slog = "2.8"
+slog-term = { version = "2.9", features = ["nested-values"] }
 walkdir = "2"
 
 [features]

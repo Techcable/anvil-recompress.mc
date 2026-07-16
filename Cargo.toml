@@ -16,6 +16,10 @@ license = "Apache-2.0"
 [workspace.dependencies]
 clap = "4.6"
 fastanvil = "0.32"
+slog = {
+  version = "2.8",
+  features = ["max_level_trace", "nested-values", "release_max_level_trace"]
+}
 
 # workspace deps
 anvil-recompress-engine = { path = "crates/engine", version = "0.1" }
