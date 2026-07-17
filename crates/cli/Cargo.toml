@@ -13,3 +13,17 @@ anvil-recompress-engine = { workspace = true, features = ["clap"] }
 anyhow = "1"
 clap = { workspace = true, features = ["derive"] }
 walkdir = "2"
+
+[features]
+default = ["compress-all"]
+
+# Enable all supported copmression options.
+compress-all = ["anvil-recompress-engine/compress-all"]
+# Enable lz4 copmression
+compress-lz4 = ["anvil-recompress-engine/compress-lz4"]
+
+clap = []
+# These features are officially DEPRECATED.
+# They were used in v0.1.1 to allow depending only on the library without the CLI.
+# Now that the library crate has been split off, they no longer do anything.
+cli = []
