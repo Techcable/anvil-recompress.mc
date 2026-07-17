@@ -4,21 +4,21 @@ members = ["crates/*"]
 
 [workspace.package]
 version = "0.1.1"
-edition = "2024"
-license = "Apache-2.0"
 authors = ["Techcable"]
-repository = "https://github.com/Techcable/anvil-recompress.mc"
+edition = "2024"
 # 1.85 - Rust 2024
 # 1.88 - let chains
 # 1.91 - Path::with_added_extension
 rust-version = "1.91"
+repository = "https://github.com/Techcable/anvil-recompress.mc"
+license = "Apache-2.0"
 
 [workspace.dependencies]
-fastanvil = "0.32"
 clap = "4.6"
+fastanvil = "0.32"
 
 # workspace deps
-anvil-recompress-engine = { version = "0.1", path = "crates/engine" }
+anvil-recompress-engine = { path = "crates/engine", version = "0.1" }
 
 [profile.release]
 lto = "thin"

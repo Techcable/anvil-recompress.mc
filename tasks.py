@@ -25,6 +25,7 @@ def run_format(ctx, check=False):
     maybe_check = " --check" if check else ""
     maybe_fix = " --fix" if not check else ""
     ctx.run("cargo +nightly fmt --all" + maybe_check)
+    ctx.run("tombi format" + maybe_check)
     # python
     ctx.run("ruff format" + maybe_check)
     ctx.run("ruff check --select=I" + maybe_fix)  # isort
