@@ -69,7 +69,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-recompress"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anvil-recompress-engine",
  "anvil-recompress-incremental",
@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-recompress-engine"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "anvil-recompress-incremental"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anvil-recompress-engine",
  "blake3",
