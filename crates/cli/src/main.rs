@@ -10,6 +10,7 @@ use walkdir::WalkDir;
 /// Recompress minecraft region files.
 #[derive(Parser, Debug)]
 #[command(version)]
+#[allow(clippy::struct_excessive_bools, reason = "these options are named")]
 struct Cli {
     /// Recursively process directories.
     #[arg(short = 'r', long)]
@@ -28,6 +29,9 @@ struct Cli {
     /// Ignore and override existing `.bak` files.
     #[arg(long, requires = "inplace")]
     override_backups: bool,
+    /// Override existing destination options.
+    #[arg(long, requires = "dest")]
+    override_existing_dest: bool,
     /// Suppress the normal printing of progress.
     #[arg(long, short)]
     quiet: bool,
@@ -39,7 +43,8 @@ impl Cli {
             .compression_level
             .map(CompressionLevel::Standard)
             .unwrap_or_default();
-        opts.override_existing = self.output.inplace && self.override_backups;
+        opts.override_existing = (self.output.inplace && self.override_backups)
+            || (self.output.dest.is_some() && self.override_existing_dest);
         opts
     }
 }
