@@ -20,5 +20,11 @@ fastanvil = "0.32"
 # workspace deps
 anvil-recompress-engine = { path = "crates/engine", version = "0.1" }
 
+# optimize dependencies
+# particularly important for blake3 and compression algorithms
+[profile.dev.package."*"]
+opt-level = 3
+debug-assertions = true
+
 [profile.release]
 lto = "thin"
