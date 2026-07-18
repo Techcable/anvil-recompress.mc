@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## 0.1.2 - 2026-07-18
+
 ### Added
 - *EXPERIMENTAL*: Add incremental processing/caching functionality.
   Avoids recompressing files when inputs haven't changed.
