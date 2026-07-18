@@ -144,7 +144,7 @@ fn process_entries_standard(cli: &Cli) -> anyhow::Result<()> {
 
 pub fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    if cli.compression != CompressionAlgorithm::Lz4 {
+    if cli.compression == CompressionAlgorithm::Lz4 {
         eprintln!("WARN: Compression choice 'lz4' has not been tested.");
     }
     if cli.recurse {
